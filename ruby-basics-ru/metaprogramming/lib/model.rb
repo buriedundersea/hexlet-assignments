@@ -1,32 +1,36 @@
 # frozen_string_literal: true
+
 # BEGIN
 module Model
   DATA_TYPES = { string: :to_s, integer: :to_i, float: :to_f, datetime: :to_datetime, boolean: :to_bool }.freeze
-  DEFAULTS = {}
 
   def self.included(base)
     base.extend(ClassMethods)
   end
 
   def initialize(hash = {})
-    DEFAULTS.each {|k, v| self.instance_variable_set "@#{k}", v }
-    hash.each {|k, v| self.instance_variable_set "@#{k}", v }
+    self.methods.filter { |method| method.to_s.include? ("default") }.each {|method| send(method) }
+    hash.each { |k, v| self.instance_variable_set "@#{k}", v }
   end
 
   def attributes
     self.instance_variables.map do |attribute|
-      key = attribute.to_s.gsub('@','').to_sym
-      val = attribute.to_s.gsub('@','')
+      key = attribute.to_s.gsub('@', '').to_sym
+      val = attribute.to_s.gsub('@', '')
       [key, send(val)]
     end.to_h
   end
 
+  # Methods for class
   module ClassMethods
     def attribute(name, options = {})
-      DEFAULTS[name.to_sym] = options[:default]
+      define_method("default_#{name}") do
+        self.instance_variable_set("@#{name}", options[:default])
+      end
 
       define_method(name) do
         return nil if self.instance_variable_get("@#{name}").nil?
+
         options.key?(:type) ? self.instance_variable_get("@#{name}").send(DATA_TYPES[options[:type]]) : self.instance_variable_get("@#{name}")
       end
 
@@ -35,6 +39,7 @@ module Model
   end
 end
 
+# Special methods
 module NewConvertTypes
   def to_datetime
     DateTime.parse(self.to_s)
@@ -43,7 +48,7 @@ module NewConvertTypes
   def to_bool
     if self == true || self == false
       self
-    elsif self == 0 || self == ""
+    elsif self.zero? || self.empty?
       false
     else
       true
